@@ -1,0 +1,60 @@
+# Unity generated folders. Library alone is ~150 MB and is rebuilt from Assets.
+/[Ll]ibrary/
+/[Tt]emp/
+/[Oo]bj/
+/[Bb]uild/
+/[Bb]uilds/
+/[Ll]ogs/
+/[Uu]ser[Ss]ettings/
+/[Mm]emoryCaptures/
+/[Rr]ecordings/
+
+# Asset Store and package caches
+/[Aa]ssets/AssetStoreTools*
+/[Aa]ssets/Plugins/Editor/JetBrains*
+
+# Generated IDE and solution files
+.vs/
+.idea/
+.vscode/
+*.csproj
+*.unityproj
+*.sln
+*.suo
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.opendb
+*.VC.db
+
+# Build artifacts
+*.apk
+*.aab
+*.unitypackage
+*.app
+ExportedObj/
+crashlytics-build.properties
+/[Aa]ssets/[Ss]treamingAssets/aa.meta
+/[Aa]ssets/[Ss]treamingAssets/aa/*
+
+# OS noise
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Pipeline scratch: generated models and reports, not source
+/_Concept/**/generated/
+/pipeline_report.txt
+/.autorun_pipeline
+
+# Secrets. API keys must never be committed.
+.env
+*.env
+secrets.json
+*_secret*
+tripo_key*
+
+# Unity batch-mode log
+batch.log

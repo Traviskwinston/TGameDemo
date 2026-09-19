@@ -1,0 +1,45 @@
+# Normalise text so line endings don't churn between machines.
+* text=auto eol=lf
+
+# Unity text assets must stay diffable and must never be mangled.
+*.cs         text diff=csharp
+*.shader     text
+*.cginc      text
+*.hlsl       text
+*.asmdef     text
+*.json       text
+*.md         text
+*.ps1        text
+*.py         text
+*.unity      text
+*.prefab     text
+*.asset      text
+*.mat        text
+*.controller text
+*.mask       text
+*.meta       text
+
+# Large binaries go to LFS. The five KayKit FBX files alone are ~104 MB, which would
+# otherwise be duplicated in history on every change.
+*.fbx           filter=lfs diff=lfs merge=lfs -text
+*.glb           filter=lfs diff=lfs merge=lfs -text
+*.gltf          filter=lfs diff=lfs merge=lfs -text
+*.blend         filter=lfs diff=lfs merge=lfs -text
+*.blend1        filter=lfs diff=lfs merge=lfs -text
+*.psd           filter=lfs diff=lfs merge=lfs -text
+*.tga           filter=lfs diff=lfs merge=lfs -text
+*.exr           filter=lfs diff=lfs merge=lfs -text
+*.hdr           filter=lfs diff=lfs merge=lfs -text
+*.wav           filter=lfs diff=lfs merge=lfs -text
+*.mp3           filter=lfs diff=lfs merge=lfs -text
+*.ogg           filter=lfs diff=lfs merge=lfs -text
+*.unitypackage  filter=lfs diff=lfs merge=lfs -text
+
+# Small binaries stay in normal git so GitHub can preview them.
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.tif  binary
+*.ttf  binary
+*.otf  binary
+*.dll  binary
