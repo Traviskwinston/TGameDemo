@@ -3,7 +3,7 @@ Blender stage of the 2D -> 3D pipeline. Run headless:
 
   blender --background --python _Tools/blender_inspect_clean.py -- \
       --in  _Concept/Ash/generated/ash_raw_pbr.glb \
-      --out Assets/GameDemo/Characters/AshAI/Ash.fbx \
+      --out Assets/TGameDemo/Characters/AshAI/Ash.fbx \
       --report _Concept/Ash/generated/blender_report.json \
       --target-tris 12000 --height 1.72
 

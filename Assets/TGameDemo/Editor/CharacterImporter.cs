@@ -11,13 +11,13 @@ namespace GameDemo.Editor
     /// <summary>
     /// Swaps the procedural hero for a downloaded rigged character.
     ///
-    /// Drop any humanoid FBX/GLB into Assets/GameDemo/Characters, then run the menu item.
+    /// Drop any humanoid FBX/GLB into Assets/TGameDemo/Characters, then run the menu item.
     /// It forces Humanoid rig import, parents the model under Player, disables the procedural
     /// avatar, and attaches AnimatorDriver so the existing motor drives it.
     /// </summary>
     public static class CharacterImporter
     {
-        public const string CharacterFolder = "Assets/GameDemo/Characters";
+        public const string CharacterFolder = "Assets/TGameDemo/Characters";
 
         /// <summary>Best full-body model in the characters folder, or null.</summary>
         public static string FindBestModel()
@@ -41,7 +41,7 @@ namespace GameDemo.Editor
         {
             if (!AssetDatabase.IsValidFolder(CharacterFolder))
             {
-                AssetDatabase.CreateFolder("Assets/GameDemo", "Characters");
+                AssetDatabase.CreateFolder("Assets/TGameDemo", "Characters");
                 EditorUtility.DisplayDialog("No characters yet",
                     "Created " + CharacterFolder + ".\n\nPut a rigged humanoid FBX in there, then run this again.",
                     "OK");

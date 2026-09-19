@@ -15,7 +15,7 @@ $ui = Get-ChildItem (Join-Path $root 'Library\ScriptAssemblies') -Filter 'UnityE
 if ($ui) { $refs += $ui.FullName } else { Write-Host 'WARN: UnityEngine.UI.dll not found' }
 $refs = $refs | Sort-Object -Unique
 
-$srcs = Get-ChildItem (Join-Path $root 'Assets\GameDemo') -Recurse -Filter '*.cs' | ForEach-Object { $_.FullName }
+$srcs = Get-ChildItem (Join-Path $root 'Assets\TGameDemo') -Recurse -Filter '*.cs' | ForEach-Object { $_.FullName }
 
 $cscDll = Join-Path $unity 'DotNetSdkRoslyn\csc.dll'
 $dotnet = Join-Path $unity 'NetCoreRuntime\dotnet.exe'

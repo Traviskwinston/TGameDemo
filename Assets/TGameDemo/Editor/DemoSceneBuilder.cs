@@ -15,7 +15,7 @@ namespace GameDemo.Editor
     /// </summary>
     public static class DemoSceneBuilder
     {
-        const string ScenePath = "Assets/GameDemo/Scenes/DemoRoom.unity";
+        const string ScenePath = "Assets/TGameDemo/Scenes/DemoRoom.unity";
 
         static Material _stone, _floor, _wood, _mossStone, _accent, _metal;
 
@@ -383,7 +383,7 @@ namespace GameDemo.Editor
 
         static Material MakeMat(string name, Color color, float metallic, float smoothness)
         {
-            string path = "Assets/GameDemo/Materials/" + name + ".mat";
+            string path = "Assets/TGameDemo/Materials/" + name + ".mat";
             Material existing = AssetDatabase.LoadAssetAtPath<Material>(path);
             Material mat = existing;
 
@@ -449,11 +449,11 @@ namespace GameDemo.Editor
 
         static void EnsureFolders()
         {
-            if (!AssetDatabase.IsValidFolder("Assets/GameDemo")) AssetDatabase.CreateFolder("Assets", "GameDemo");
-            if (!AssetDatabase.IsValidFolder("Assets/GameDemo/Scenes")) AssetDatabase.CreateFolder("Assets/GameDemo", "Scenes");
-            if (!AssetDatabase.IsValidFolder("Assets/GameDemo/Materials")) AssetDatabase.CreateFolder("Assets/GameDemo", "Materials");
-            if (!AssetDatabase.IsValidFolder("Assets/GameDemo/Scripts")) AssetDatabase.CreateFolder("Assets/GameDemo", "Scripts");
-            if (!AssetDatabase.IsValidFolder("Assets/GameDemo/Characters")) AssetDatabase.CreateFolder("Assets/GameDemo", "Characters");
+            if (!AssetDatabase.IsValidFolder("Assets/TGameDemo")) AssetDatabase.CreateFolder("Assets", "GameDemo");
+            if (!AssetDatabase.IsValidFolder("Assets/TGameDemo/Scenes")) AssetDatabase.CreateFolder("Assets/TGameDemo", "Scenes");
+            if (!AssetDatabase.IsValidFolder("Assets/TGameDemo/Materials")) AssetDatabase.CreateFolder("Assets/TGameDemo", "Materials");
+            if (!AssetDatabase.IsValidFolder("Assets/TGameDemo/Scripts")) AssetDatabase.CreateFolder("Assets/TGameDemo", "Scripts");
+            if (!AssetDatabase.IsValidFolder("Assets/TGameDemo/Characters")) AssetDatabase.CreateFolder("Assets/TGameDemo", "Characters");
         }
     }
 }
