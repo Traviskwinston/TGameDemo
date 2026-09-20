@@ -58,3 +58,7 @@ tripo_key*
 
 # Unity batch-mode log
 batch.log
+
+# Python bytecode from the Blender tool scripts
+__pycache__/
+*.pyc

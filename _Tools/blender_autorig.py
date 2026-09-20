@@ -20,6 +20,7 @@ import math
 import sys
 from pathlib import Path
 
+import bmesh
 import bpy
 from mathutils import Vector
 
@@ -165,7 +166,175 @@ def radius_for(bone_name, height):
     return 0.25 * height
 
 
-def skin(meshes, rig, report, influences=4, sharpness=2.0, smooth_passes=8, height=1.72):
+def bone_hops(rig):
+    """All-pairs hop distance over the bone hierarchy, treated as an undirected graph."""
+    names = [b.name for b in rig.data.bones]
+    adj = {n: set() for n in names}
+    for b in rig.data.bones:
+        if b.parent is not None:
+            adj[b.name].add(b.parent.name)
+            adj[b.parent.name].add(b.name)
+
+    hops = {}
+    for start in names:
+        seen = {start: 0}
+        frontier = [start]
+        while frontier:
+            nxt = []
+            for n in frontier:
+                for k in adj[n]:
+                    if k not in seen:
+                        seen[k] = seen[n] + 1
+                        nxt.append(k)
+            frontier = nxt
+        hops[start] = seen
+    return hops
+
+
+def torso_bones(bones):
+    return [b for b in bones if any(k in b[0] for k in ("Hips", "Spine", "Chest"))]
+
+
+# The body's core moves more or less as one mass, so surfaces fusing across it are fine:
+# a hood really is attached at the shoulders. Limbs swing away from it, and that is where
+# fused geometry has to be cut.
+CORE_KEYS = ("Hips", "Spine", "Chest", "Neck", "Head", "Shoulder")
+
+
+def is_core(bone_name):
+    return any(k in bone_name for k in CORE_KEYS)
+
+
+def nearest_bone(p, bones, torso):
+    """Which bone a vertex belongs to, by the same rule `skin` uses.
+
+    The out-of-radius fallback must match: `skin` hands cloth outside every radius to
+    the torso, so resolving it here to the nearest segment instead labelled cloak verts
+    next to a sleeve as "arm". They then looked like same-region neighbours and escaped
+    ripping, while `skin` weighted them to Hips - the exact disagreement that stretched.
+    """
+    best_in, best_any = None, None
+    for name, head, tail, radius in bones:
+        d, _ = seg_distance(p, head, tail)
+        if best_any is None or d < best_any[0]:
+            best_any = (d, name)
+        if d <= radius and (best_in is None or d < best_in[0]):
+            best_in = (d, name)
+    if best_in is not None:
+        return best_in[1]
+    near_torso = min(((seg_distance(p, h, t)[0], n) for n, h, t, _ in torso),
+                     default=None)
+    return near_torso[1] if near_torso else best_any[1]
+
+
+def rip_fused_surfaces(body, rig, report, height=1.72, rip_hops=3,
+                       fill_gaps=True, fill_gap_sides=64):
+    """Splits mesh edges that join anatomically unrelated regions.
+
+    Image-to-3D reconstruction returns one watertight shell, so surfaces that merely
+    touch come back fused: here the hands and cloak share edges. No weighting can
+    satisfy an edge whose ends belong to an arm and to the hips, and smoothing only
+    hides it by dragging Hips weight into the arm, which is what stretched vertices
+    into flesh-coloured spikes when the shoulder swung forward.
+
+    The bridging faces are deleted rather than edge-split. Splitting duplicates vertices
+    but leaves every resulting edge still spanning both regions, so the stretch survives
+    it. Deleting opens a real gap, which is what should have separated them to begin with.
+    """
+    bones = [(b.name, b.head_local.copy(), b.tail_local.copy(), radius_for(b.name, height))
+             for b in rig.data.bones]
+    hops = bone_hops(rig)
+    to_rig = rig.matrix_world.inverted() @ body.matrix_world
+
+    torso = torso_bones(bones)
+    region = [nearest_bone(to_rig @ v.co, bones, torso) for v in body.data.vertices]
+
+    bm = bmesh.new()
+    bm.from_mesh(body.data)
+    bm.verts.ensure_lookup_table()
+
+    doomed = []
+    pairs = {}
+    for f in bm.faces:
+        regions = {region[v.index] for v in f.verts}
+        if len(regions) < 2:
+            continue
+        worst, key = 0, None
+        for ra in regions:
+            for rb in regions:
+                # Requiring a limb keeps the hood-to-shoulder join, which is 3 hops like
+                # chest-to-upper-arm and cannot be told apart by distance alone.
+                if is_core(ra) and is_core(rb):
+                    continue
+                h = hops.get(ra, {}).get(rb, 99)
+                if h > worst:
+                    worst, key = h, " | ".join(sorted((ra, rb)))
+        if worst >= rip_hops:
+            doomed.append(f)
+            pairs[key] = pairs.get(key, 0) + 1
+
+    shards = 0
+    if doomed:
+        bmesh.ops.delete(bm, geom=doomed, context="FACES")
+        bmesh.ops.delete(bm, geom=[v for v in bm.verts if not v.link_faces], context="VERTS")
+
+        # Opening a gap can leave small patches attached to nothing. They keep whatever
+        # bone is nearest and fly off the body as floating debris, so drop them.
+        components, seen = [], set()
+        for f in bm.faces:
+            if f in seen:
+                continue
+            group, stack = [], [f]
+            seen.add(f)
+            while stack:
+                cur = stack.pop()
+                group.append(cur)
+                for v in cur.verts:
+                    for nf in v.link_faces:
+                        if nf not in seen:
+                            seen.add(nf)
+                            stack.append(nf)
+            components.append(group)
+
+        if components:
+            biggest = max(len(c) for c in components)
+            cutoff = max(20, int(biggest * 0.01))
+            debris = [f for c in components if len(c) < cutoff for f in c]
+            if debris:
+                shards = len([c for c in components if len(c) < cutoff])
+                bmesh.ops.delete(bm, geom=debris, context="FACES")
+                bmesh.ops.delete(bm, geom=[v for v in bm.verts if not v.link_faces],
+                                 context="VERTS")
+
+    # Cutting the fusion leaves the body open where the bridge used to be. Re-closing each
+    # side keeps the silhouette solid, but the fill must not simply span the gap again, so
+    # the caller should confirm the deform audit has not regressed.
+    filled = 0
+    if fill_gaps and doomed:
+        before = sum(1 for e in bm.edges if e.is_boundary)
+        boundary = [e for e in bm.edges if e.is_boundary]
+        if boundary:
+            bmesh.ops.holes_fill(bm, edges=boundary, sides=fill_gap_sides)
+        filled = before - sum(1 for e in bm.edges if e.is_boundary)
+
+    bm.to_mesh(body.data)
+    bm.free()
+    body.data.update()
+
+    report["ripped_fused_surfaces"] = {
+        "rip_hops": rip_hops,
+        "faces_deleted": len(doomed),
+        "orphan_shards_removed": shards,
+        "boundary_edges_closed": filled,
+        "region_pairs": dict(sorted(pairs.items(), key=lambda kv: -kv[1])),
+    }
+    print(f"ripped {len(doomed)} fused faces, removed {shards} orphan shards")
+    for k, v in sorted(pairs.items(), key=lambda kv: -kv[1])[:8]:
+        print(f"   {v:5d}  {k}")
+
+
+def skin(meshes, rig, report, influences=4, sharpness=2.0, smooth_passes=8, height=1.72,
+         max_bone_hops=3):
     """
     Nearest-bone-segment weighting.
 
@@ -176,7 +345,7 @@ def skin(meshes, rig, report, influences=4, sharpness=2.0, smooth_passes=8, heig
     """
     bones = [(b.name, b.head_local.copy(), b.tail_local.copy(), radius_for(b.name, height))
              for b in rig.data.bones]
-    torso = [b for b in bones if any(k in b[0] for k in ("Hips", "Spine", "Chest"))]
+    torso = torso_bones(bones)
 
     for m in meshes:
         m.parent = rig
@@ -242,6 +411,27 @@ def skin(meshes, rig, report, influences=4, sharpness=2.0, smooth_passes=8, heig
                     weights[i] = {k: v / s for k, v in acc.items()}
                     islands += 1
 
+        # Which bones each vertex may ever be influenced by, fixed from the geometric
+        # assignment before any relaxation.
+        #
+        # Welding the mesh joined the cloak to the sleeves, so relaxation could walk
+        # weight from cloak verts (held by Hips/Spine) out into the arms. Arm verts ended
+        # up 33% Hips, stayed behind when the shoulder swung, and stretched into spikes.
+        # Hips is 6 hops from a lower arm, so a hop limit stops that while still allowing
+        # the shoulder-to-chest blend a real deltoid needs.
+        hops = bone_hops(rig)
+        base = [max(w, key=w.get) if w else None for w in weights]
+        allowed = [set(hops.get(d, {}).keys()) if d is None else
+                   {k for k, h in hops[d].items() if h <= max_bone_hops}
+                   for d in base]
+
+        def constrain(w, i):
+            kept = {k: val for k, val in w.items() if k in allowed[i]}
+            if not kept:
+                kept = {base[i]: 1.0} if base[i] else w
+            s = sum(kept.values()) or 1.0
+            return {k: val / s for k, val in kept.items()}
+
         # Relax across edges so joints bend smoothly instead of creasing.
         if smooth_passes > 0:
             for _ in range(smooth_passes):
@@ -254,8 +444,10 @@ def skin(meshes, rig, report, influences=4, sharpness=2.0, smooth_passes=8, heig
                     n = len(adj[i]) + 1
                     acc = {k: val / n for k, val in acc.items() if val / n > 1e-3}
                     s = sum(acc.values()) or 1.0
-                    nxt.append({k: val / s for k, val in acc.items()})
+                    nxt.append(constrain({k: val / s for k, val in acc.items()}, i))
                 weights = nxt
+        else:
+            weights = [constrain(w, i) for i, w in enumerate(weights)]
 
         for i, w in enumerate(weights):
             for name, val in w.items():
@@ -271,6 +463,7 @@ def skin(meshes, rig, report, influences=4, sharpness=2.0, smooth_passes=8, heig
             "influences_per_vert": influences,
             "sharpness": sharpness,
             "smooth_passes": smooth_passes,
+            "max_bone_hops": max_bone_hops,
         })
 
     report["skinning"] = "nearest_bone_segment"
@@ -320,6 +513,14 @@ def main():
     ap.add_argument("--out", required=True)
     ap.add_argument("--report", required=True)
     ap.add_argument("--height", type=float, default=1.72)
+    ap.add_argument("--rip-hops", type=int, default=3,
+                    help="delete faces joining regions at least this many bones apart; "
+                         "3 measured best, 4 leaves arm-to-chest fusion, 5 much worse")
+    ap.add_argument("--no-fill-gaps", action="store_true",
+                    help="leave the gaps opened by ripping unclosed")
+    ap.add_argument("--fill-gap-sides", type=int, default=64,
+                    help="largest boundary loop the post-rip fill will close; 64 closes "
+                         "the shoulder gaps with no measured regression in deform audit")
     ap.add_argument("--face-forward", default="+Y",
                     help="which axis the source model faces; rotated to -Y for Blender/Unity")
     args = ap.parse_args(argv_after_ddash())
@@ -374,6 +575,9 @@ def main():
     rig = build_armature(skeleton(m))
     report["bones"] = [b.name for b in rig.data.bones]
 
+    rip_fused_surfaces(body, rig, report, height=args.height, rip_hops=args.rip_hops,
+                       fill_gaps=not args.no_fill_gaps,
+                       fill_gap_sides=args.fill_gap_sides)
     skin(meshes, rig, report, height=args.height)
     deform_test(rig, meshes, report)
 
