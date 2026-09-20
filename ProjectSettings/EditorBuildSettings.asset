@@ -6,7 +6,7 @@ EditorBuildSettings:
   serializedVersion: 2
   m_Scenes:
   - enabled: 1
-    path: Assets/GameDemo/Scenes/DemoRoom.unity
+    path: Assets/TGameDemo/Scenes/DemoRoom.unity
     guid: 8aac41fb2e62243428a3497961cdb3ff
   m_configObjects: {}
   m_UseUCBPForAssetBundles: 0
