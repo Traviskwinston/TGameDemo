@@ -76,7 +76,7 @@ def mesh_stats(obj):
     return stats
 
 
-def clean(obj, report):
+def clean(obj, report, fill_hole_sides=10, weld_distance=2e-4):
     """Repairs that never change the silhouette: dedupe, normals, loose geometry."""
     bpy.context.view_layer.objects.active = obj
     obj.select_set(True)
@@ -84,8 +84,21 @@ def clean(obj, report):
     before = len(obj.data.vertices)
     bm = bmesh.new()
     bm.from_mesh(obj.data)
-    bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=1e-5)
+
+    # Generated meshes arrive with duplicate verts along seams. A slightly larger weld
+    # than exact-match closes cracks that otherwise split open once the mesh is posed.
+    bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=weld_distance)
     bmesh.ops.delete(bm, geom=[v for v in bm.verts if not v.link_edges], context="VERTS")
+
+    boundary_before = sum(1 for e in bm.edges if e.is_boundary)
+    # sides caps the fill, so small defects (boot-cuff rims, seam cracks) close while
+    # intentional openings like the hood's face gap are left alone.
+    if fill_hole_sides > 0:
+        boundary = [e for e in bm.edges if e.is_boundary]
+        if boundary:
+            bmesh.ops.holes_fill(bm, edges=boundary, sides=fill_hole_sides)
+    boundary_after = sum(1 for e in bm.edges if e.is_boundary)
+
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
     bm.to_mesh(obj.data)
     bm.free()
@@ -95,6 +108,10 @@ def clean(obj, report):
         "name": obj.name,
         "verts_before": before,
         "verts_after": len(obj.data.vertices),
+        "boundary_edges_before": boundary_before,
+        "boundary_edges_after": boundary_after,
+        "holes_filled_up_to_sides": fill_hole_sides,
+        "weld_distance": weld_distance,
         "normals_recalculated": True,
     })
 

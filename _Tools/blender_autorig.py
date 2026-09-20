@@ -150,7 +150,9 @@ def seg_distance(p, a, b):
 # the arms and between the legs, and gets torn apart when those limbs move.
 INFLUENCE_RADIUS = {
     "Hand": 0.075, "LowerArm": 0.075, "UpperArm": 0.085, "Shoulder": 0.10,
-    "LowerLeg": 0.10, "UpperLeg": 0.12, "Foot": 0.09,
+    # Foot is deliberately tight: at 0.09 it reached above the ankle and claimed
+    # boot-cuff vertices, which then sheared away from the shin when the foot rotated.
+    "LowerLeg": 0.10, "UpperLeg": 0.12, "Foot": 0.055,
     "Head": 0.16, "Neck": 0.12, "Hips": 0.40, "Spine": 0.40,
     "Chest": 0.40, "UpperChest": 0.40,
 }
@@ -163,7 +165,7 @@ def radius_for(bone_name, height):
     return 0.25 * height
 
 
-def skin(meshes, rig, report, influences=3, sharpness=4.0, smooth_passes=3, height=1.72):
+def skin(meshes, rig, report, influences=4, sharpness=2.0, smooth_passes=8, height=1.72):
     """
     Nearest-bone-segment weighting.
 
@@ -214,13 +216,34 @@ def skin(meshes, rig, report, influences=3, sharpness=4.0, smooth_passes=3, heig
             total = sum(w for _, w in raw) or 1.0
             weights.append({name: w / total for name, w in raw})
 
+        adj = [[] for _ in m.data.vertices]
+        for e in m.data.edges:
+            a, b = e.vertices
+            adj[a].append(b)
+            adj[b].append(a)
+
+        # A vertex whose strongest bone matches none of its neighbours' is an island.
+        # Posed, it shears away from the surface as a spike, which is what showed up
+        # at the wrists and fingers. Replace those with the neighbourhood average.
+        islands = 0
+        for _ in range(2):
+            dominant = [max(w, key=w.get) if w else None for w in weights]
+            for i, w in enumerate(weights):
+                if not adj[i] or dominant[i] is None:
+                    continue
+                if any(dominant[j] == dominant[i] for j in adj[i]):
+                    continue
+                acc = {}
+                for j in adj[i]:
+                    for k, val in weights[j].items():
+                        acc[k] = acc.get(k, 0.0) + val
+                s = sum(acc.values())
+                if s > 0:
+                    weights[i] = {k: v / s for k, v in acc.items()}
+                    islands += 1
+
         # Relax across edges so joints bend smoothly instead of creasing.
         if smooth_passes > 0:
-            adj = [[] for _ in m.data.vertices]
-            for e in m.data.edges:
-                a, b = e.vertices
-                adj[a].append(b)
-                adj[b].append(a)
             for _ in range(smooth_passes):
                 nxt = []
                 for i, w in enumerate(weights):
@@ -244,7 +267,9 @@ def skin(meshes, rig, report, influences=3, sharpness=4.0, smooth_passes=3, heig
             "verts": len(m.data.vertices),
             "verts_weighted": assigned,
             "verts_given_to_torso": clipped,
+            "weight_islands_fixed": islands,
             "influences_per_vert": influences,
+            "sharpness": sharpness,
             "smooth_passes": smooth_passes,
         })
 
