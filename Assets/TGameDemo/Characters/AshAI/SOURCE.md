@@ -2,7 +2,7 @@
 
 Produced by the pipeline in `_Tools` with no paid services:
 
-1. Concept art (front/side/back) - `_Concept/Ash/ash_concept_*.png`
+1. Concept art (front/side/back) - `_Concept/Ash/v3_refs/`
 2. Image-to-3D - TRELLIS via HuggingFace Space `trellis-community/TRELLIS`, MIT
    licensed. Multiview reconstruction, 33 seconds.
 3. Blender cleanup - `_Tools/blender_inspect_clean.py`. Welds seam duplicates at
@@ -53,15 +53,51 @@ Shoulder-to-fingertip is now split by human proportion - upper arm to 40%, forea
 75%, hand the rest - which puts 181 verts under LeftHand with no change to the deform
 audit. Verify with `blender_hand_analysis.py` after touching the skeleton.
 
-## Known limitations
+## Two weighting rules that stop tearing
 
-- The thumbs are flat flaps rather than digits. The four fingers reconstructed acceptably;
-  the thumb did not. It is a wrong *shape*, not a thin-sheet artefact: local thickness
-  measured by ray cast (`blender_fix_thin_geometry.py`) found only 17 verts under 2cm, and
-  thickening 90 of them changed the render not at all. Procedural repair cannot invent a
-  correct thumb from an incorrect one. The fix belongs upstream - splayed fingers with a
-  separated thumb are the hardest case for image-to-3D, and closed hands reconstruct
-  cleanly - or the thumb must be modelled and grafted on.
+**No vertex may be driven by both limb chains.** LowerLeg's radius reaches across the gap
+between ankles, so boot-sole verts picked up 0.30 RightLowerLeg and 0.27 LeftLowerLeg and
+were torn in half the moment the legs scissored: 70x stride stretch. The existing hop
+limit does not prevent this because it is anchored on the vertex's *initial* dominant
+bone, and a vertex between the ankles starts dominated by Hips, which is only 2 hops from
+either leg. `drop_cross_side` keeps the stronger side and discards the other, leaving
+centre bones alone.
+
+**Out-of-radius does not mean cloth.** The fallback handed every vertex outside all bone
+radii to the torso, which is right for a cloak hem but wrong for boot geometry sitting
+just outside the deliberately tight Foot radius of 0.055 - that put Chest and Spine on
+verts at ankle height. A vertex within 2.5x the nearest bone's radius is now snapped to
+that bone; only genuinely distant verts go to the torso.
+
+Collapse decimation also leaves sub-millimetre edges, and an edge 0.0008 long reports
+enormous stretch under any pose because the ratio divides by almost nothing. `weld_slivers`
+runs after scale normalisation, at a threshold relative to model height, since the earlier
+weld runs before decimation in pre-scale units and cannot catch them.
+
+Together: stride stretch 70.58x -> 3.9x, edges over 4x 24 -> 0.
+
+## Hands: why the concept art poses closed fists
+
+The first two attempts drew Ash with splayed fingers, and both times the thumb came back
+as a flat flap rather than a digit. It is a wrong *shape*, not a thin-sheet artefact:
+local thickness measured by ray cast (`blender_fix_thin_geometry.py`) found only 17 verts
+under 2cm, and thickening 90 of them changed the render not at all. Procedural repair
+cannot invent a correct thumb from an incorrect one, and no image-to-3D, retopology or
+mesh-repair tool patches specific anatomy.
+
+Five thin splayed digits are the hardest case for image-to-3D. Closed fists are a compact
+mass it resolves reliably, and the fist is what a hand holding a weapon or torch needs
+anyway. Measured on `blender_hand_analysis.py` flatness, where 1.0 is equidimensional and
+0 is a sheet: splayed 0.48, arms-down fists 0.20, A-pose fists 0.83.
+
+Keep both constraints in the prompt. Asking for fists while letting the arms hang against
+the body gave the 0.20 result - the arms fused to the cloak, doubling ripped faces to 410
+and pushing stride stretch to 4.27x. The reference needs a wide A-pose with visible
+background between arm and torso *and* closed fists, stated for every view. A side view
+must also say the arm hangs downward, or it gets drawn reaching backward and contradicts
+the front.
+
+## Known limitations
 - Face is a flat smeared plane. Inherent to current image-to-3D, and the reason
   this suits a behind-the-shoulder camera.
 - No animation clips. Both this and RogueHooded are Unity Humanoid, so KayKit's 76

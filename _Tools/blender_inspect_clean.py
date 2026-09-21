@@ -132,6 +132,35 @@ def decimate(obj, target_tris, report):
         {"name": obj.name, "from": current, "to": after, "ratio": round(ratio, 4)})
 
 
+def weld_slivers(obj, model_height, report, fraction=0.001):
+    """Collapses sub-millimetre edges left behind by collapse decimation.
+
+    An edge shorter than a millimetre reports enormous stretch under any pose - one
+    measured 70x from a rest length of 0.0008 - because the ratio divides by almost
+    nothing. The earlier weld runs before decimation and in pre-scale units, so it cannot
+    catch these. Threshold is relative to model height to stay scale independent.
+    """
+    if model_height <= 0:
+        return
+    # normalise_scale parents to a scaled root rather than applying scale to the mesh, so
+    # mesh-local units are not world units. Convert the world threshold into local units.
+    s = obj.matrix_world.to_scale()
+    local_per_world = 3.0 / max(1e-9, s.x + s.y + s.z)
+    dist = model_height * fraction * local_per_world
+    bm = bmesh.new()
+    bm.from_mesh(obj.data)
+    before = len(bm.verts)
+    bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=dist)
+    bmesh.ops.delete(bm, geom=[v for v in bm.verts if not v.link_edges], context="VERTS")
+    bm.to_mesh(obj.data)
+    bm.free()
+    obj.data.update()
+    report.setdefault("sliver_weld", []).append({
+        "name": obj.name, "distance": round(dist, 6),
+        "verts_before": before, "verts_after": len(obj.data.vertices),
+    })
+
+
 def ensure_uvs(obj, report):
     if obj.data.uv_layers:
         return
@@ -208,6 +237,9 @@ def main():
         decimate(obj, args.target_tris, report)
 
     normalise_scale(meshes, args.height, report)
+    # After normalisation, so the threshold can be expressed against final game scale.
+    for obj in meshes:
+        weld_slivers(obj, args.height, report)
     report["after"] = [mesh_stats(o) for o in meshes]
 
     # Problems worth a human eye: these are not safely auto-fixable.

@@ -353,6 +353,7 @@ def skin(meshes, rig, report, influences=4, sharpness=2.0, smooth_passes=8, heig
     bones = [(b.name, b.head_local.copy(), b.tail_local.copy(), radius_for(b.name, height))
              for b in rig.data.bones]
     torso = torso_bones(bones)
+    radius_by_name = {b[0]: b[3] for b in bones}
 
     for m in meshes:
         m.parent = rig
@@ -368,6 +369,7 @@ def skin(meshes, rig, report, influences=4, sharpness=2.0, smooth_passes=8, heig
         to_rig = rig.matrix_world.inverted() @ m.matrix_world
         weights = []
         clipped = 0
+        near_body = 0
         for v in m.data.vertices:
             p = to_rig @ v.co
             eligible, fallback = [], []
@@ -380,13 +382,25 @@ def skin(meshes, rig, report, influences=4, sharpness=2.0, smooth_passes=8, heig
             if eligible:
                 pool = sorted(eligible, key=lambda s: s[0])[:influences]
             else:
-                # Cloth and hems sit outside every limb radius; hand them to the torso
-                # so they follow the body instead of whichever limb happens to be near.
-                pool = sorted(
-                    [(seg_distance(p, h, t)[0], n) for n, h, t, _ in torso],
-                    key=lambda s: s[0],
-                )[:influences] or sorted(fallback, key=lambda s: s[0])[:influences]
-                clipped += 1
+                near_d, near_name = min(fallback, key=lambda s: s[0])
+                near_r = radius_by_name[near_name]
+                if near_d <= near_r * 2.5:
+                    # Only just outside a deliberately tight radius - the Foot radius is
+                    # 0.055 to keep it off the boot cuff - so this is body geometry, not
+                    # cloth. Handing it to the torso put Chest and Spine on vertices at
+                    # ankle height, which tore the boots apart in a stride.
+                    pool = sorted([s for s in fallback if s[0] <= near_r * 3.0],
+                                  key=lambda s: s[0])[:influences]
+                    near_body += 1
+                else:
+                    # Genuinely far from every bone: a cloak hem. Follow the torso rather
+                    # than whichever limb happens to be nearest, so it does not flap with
+                    # a leg.
+                    pool = sorted(
+                        [(seg_distance(p, h, t)[0], n) for n, h, t, _ in torso],
+                        key=lambda s: s[0],
+                    )[:influences] or sorted(fallback, key=lambda s: s[0])[:influences]
+                    clipped += 1
 
             raw = [(name, 1.0 / ((d + 1e-4) ** sharpness)) for d, name in pool]
             total = sum(w for _, w in raw) or 1.0
@@ -432,10 +446,29 @@ def skin(meshes, rig, report, influences=4, sharpness=2.0, smooth_passes=8, heig
                    {k for k, h in hops[d].items() if h <= max_bone_hops}
                    for d in base]
 
+        def drop_cross_side(w):
+            """No vertex may be driven by both the left and right limb chains.
+
+            The hop limit alone does not prevent this, because it is anchored on the
+            vertex's initial dominant bone: a vertex between the ankles starts dominated by
+            Hips, and both legs are only 2 hops from Hips, so relaxation was free to blend
+            them. Boot-sole verts ended up 0.30 RightLowerLeg and 0.27 LeftLowerLeg and
+            were torn in half the moment the legs scissored in a stride. Centre bones are
+            unaffected; the weaker side is dropped.
+            """
+            left = sum(val for k, val in w.items() if k.startswith("Left"))
+            right = sum(val for k, val in w.items() if k.startswith("Right"))
+            if left <= 0.0 or right <= 0.0:
+                return w
+            drop = "Right" if left >= right else "Left"
+            kept = {k: val for k, val in w.items() if not k.startswith(drop)}
+            return kept or w
+
         def constrain(w, i):
             kept = {k: val for k, val in w.items() if k in allowed[i]}
             if not kept:
                 kept = {base[i]: 1.0} if base[i] else w
+            kept = drop_cross_side(kept)
             s = sum(kept.values()) or 1.0
             return {k: val / s for k, val in kept.items()}
 
@@ -466,6 +499,7 @@ def skin(meshes, rig, report, influences=4, sharpness=2.0, smooth_passes=8, heig
             "verts": len(m.data.vertices),
             "verts_weighted": assigned,
             "verts_given_to_torso": clipped,
+            "verts_snapped_to_nearest_bone": near_body,
             "weight_islands_fixed": islands,
             "influences_per_vert": influences,
             "sharpness": sharpness,
