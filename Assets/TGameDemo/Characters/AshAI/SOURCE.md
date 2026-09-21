@@ -43,12 +43,25 @@ A pure hop count cannot separate chest-to-upper-arm fusion from the hood's legit
 join at the shoulders, since both are 3 hops, so ripping additionally requires one side
 to be a limb rather than core body.
 
+## Arm proportions
+
+`measure` returns the extreme-X vertex per side, which is a *fingertip*, not a wrist.
+Treating it as the wrist ran LowerArm from elbow all the way to the fingertip and started
+the Hand bone at the fingertip pointing into empty space outside the mesh. No vertex was
+weighted above 0.5 to either hand bone, so the hands could not be posed at all.
+Shoulder-to-fingertip is now split by human proportion - upper arm to 40%, forearm to
+75%, hand the rest - which puts 181 verts under LeftHand with no change to the deform
+audit. Verify with `blender_hand_analysis.py` after touching the skeleton.
+
 ## Known limitations
 
-- Hands are small and the fingers barely separated. TRELLIS struggled to resolve five
-  thin splayed fingers from the concept art. Regenerating the concept with relaxed or
-  lightly closed hands would reconstruct better. This is cosmetic, not a deform bug -
-  the spikes that looked like finger damage were the fusion issue above.
+- The thumbs are flat flaps rather than digits. The four fingers reconstructed acceptably;
+  the thumb did not. It is a wrong *shape*, not a thin-sheet artefact: local thickness
+  measured by ray cast (`blender_fix_thin_geometry.py`) found only 17 verts under 2cm, and
+  thickening 90 of them changed the render not at all. Procedural repair cannot invent a
+  correct thumb from an incorrect one. The fix belongs upstream - splayed fingers with a
+  separated thumb are the hardest case for image-to-3D, and closed hands reconstruct
+  cleanly - or the thumb must be modelled and grafted on.
 - Face is a flat smeared plane. Inherent to current image-to-3D, and the reason
   this suits a behind-the-shoulder camera.
 - No animation clips. Both this and RogueHooded are Unity Humanoid, so KayKit's 76

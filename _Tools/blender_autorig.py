@@ -85,8 +85,15 @@ def skeleton(m):
     hand_l = Vector(m["hand_l"]) if "hand_l" in m else P(cx - sw * 2.4, 0.62)
     sh_r, sh_l = P(cx + sw * 0.42, 0.815), P(cx - sw * 0.42, 0.815)
     arm_r, arm_l = P(cx + sw * 0.92, 0.80), P(cx - sw * 0.92, 0.80)
-    elb_r = arm_r + (hand_r - arm_r) * 0.5
-    elb_l = arm_l + (hand_l - arm_l) * 0.5
+    # hand_r/hand_l are the extreme-X verts, so they are *fingertips*, not wrists.
+    # Splitting shoulder-to-fingertip by human proportion (upper arm 40%, forearm to 75%,
+    # hand the rest) puts the wrist inside the wrist. Previously LowerArm ran elbow to
+    # fingertip and the Hand bone started at the fingertip pointing into empty space, so
+    # no vertex was weighted above 0.5 to it and the hand could not be posed at all.
+    elb_r = arm_r + (hand_r - arm_r) * 0.40
+    elb_l = arm_l + (hand_l - arm_l) * 0.40
+    wri_r = arm_r + (hand_r - arm_r) * 0.75
+    wri_l = arm_l + (hand_l - arm_l) * 0.75
 
     bones = [
         ("Hips",          P(cx, hip_z),        P(cx, 0.60),        None),
@@ -97,12 +104,12 @@ def skeleton(m):
         ("Head",          P(cx, 0.885),        P(cx, 0.98),        "Neck"),
         ("LeftShoulder",  P(cx, 0.815),        sh_l,               "UpperChest"),
         ("LeftUpperArm",  arm_l,               elb_l,              "LeftShoulder"),
-        ("LeftLowerArm",  elb_l,               hand_l,             "LeftUpperArm"),
-        ("LeftHand",      hand_l,              hand_l + (hand_l - elb_l).normalized() * h * 0.055, "LeftLowerArm"),
+        ("LeftLowerArm",  elb_l,               wri_l,              "LeftUpperArm"),
+        ("LeftHand",      wri_l,               hand_l,             "LeftLowerArm"),
         ("RightShoulder", P(cx, 0.815),        sh_r,               "UpperChest"),
         ("RightUpperArm", arm_r,               elb_r,              "RightShoulder"),
-        ("RightLowerArm", elb_r,               hand_r,             "RightUpperArm"),
-        ("RightHand",     hand_r,              hand_r + (hand_r - elb_r).normalized() * h * 0.055, "RightLowerArm"),
+        ("RightLowerArm", elb_r,               wri_r,              "RightUpperArm"),
+        ("RightHand",     wri_r,               hand_r,             "RightLowerArm"),
         ("LeftUpperLeg",  P(m["foot_l_x"], hip_z),  P(m["foot_l_x"], 0.285), "Hips"),
         ("LeftLowerLeg",  P(m["foot_l_x"], 0.285),  P(m["foot_l_x"], 0.042), "LeftUpperLeg"),
         ("LeftFoot",      P(m["foot_l_x"], 0.042),  P(m["foot_l_x"], 0.012, m["toe_y"]), "LeftLowerLeg"),
